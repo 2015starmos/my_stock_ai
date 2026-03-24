@@ -1,8 +1,6 @@
 streamlit==1.31.0
 yfinance
 pandas
-pandas_ta
-urllib3<2.0
 requests
 lxml
 beautifulsoup4
