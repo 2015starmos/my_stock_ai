@@ -1,61 +1,49 @@
 import streamlit as st
 import yfinance as yf
 import pandas as pd
-import requests
-import time
-import os
-import json
 
-# --- 核心邏輯：手寫技術指標 (避開套件衝突) ---
-def get_indicators(df):
-    # MA5, MA20
-    df['MA5'] = df['Close'].rolling(window=5).mean()
-    df['MA20'] = df['Close'].rolling(window=20).mean()
-    # RSI (手寫簡易版)
-    delta = df['Close'].diff()
-    gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
-    loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
-    rs = gain / loss
-    df['RSI'] = 100 - (100 / (1 + rs))
-    return df
-
-# --- 頁面配置 ---
+# 設定頁面
 st.set_page_config(page_title="台股AI分析系統", layout="wide")
-st.markdown("<h1 style='color:#00f2fe;'>🚀 台股 AI 專業分析系統</h1>", unsafe_allow_html=True)
 
-# --- 側邊欄 ---
-symbol = st.sidebar.text_input("輸入股票代號", value="2330")
-lookback = st.sidebar.selectbox("查找範圍", ["3個月", "6個月", "1年"], index=1)
-days_map = {"3個月": 60, "6個月": 120, "1年": 250}
+st.title("🚀 台股 AI 專業分析系統")
+
+# 側邊欄
+symbol = st.sidebar.text_input("輸入股票代號 (例如: 2330)", value="2330")
 
 if symbol:
-    with st.spinner('AI 正在分析中...'):
-        try:
-            # 抓取資料
-            t = yf.Ticker(f"{symbol}.TW")
-            df = t.history(period="1y")
+    try:
+        # 抓取資料 (自動嘗試 TW 或 TWO)
+        ticker_list = [f"{symbol}.TW", f"{symbol}.TWO"]
+        df = pd.DataFrame()
+        
+        for t_code in ticker_list:
+            data = yf.Ticker(t_code).history(period="1y")
+            if not data.empty:
+                df = data
+                break
+        
+        if not df.empty:
+            # 手動計算均線 (不依賴額外套件)
+            df['MA5'] = df['Close'].rolling(window=5).mean()
+            df['MA20'] = df['Close'].rolling(window=20).mean()
             
-            if df.empty:
-                t = yf.Ticker(f"{symbol}.TWO")
-                df = t.history(period="1y")
+            # 顯示儀表板
+            last_price = df['Close'].iloc[-1]
+            prev_price = df['Close'].iloc[-2]
+            diff = last_price - prev_price
+            
+            col1, col2 = st.columns(2)
+            col1.metric("當前股價", f"{last_price:.2f}", f"{diff:.2f}")
+            col2.metric("5日均線", f"{df['MA5'].iloc[-1]:.2f}")
+            
+            st.write("### 📈 技術趨勢圖 (收盤價 / MA5 / MA20)")
+            st.line_chart(df[['Close', 'MA5', 'MA20']].tail(120))
+            
+            st.success(f"✅ {symbol} 資料分析成功！")
+        else:
+            st.error("查無資料，請確認代號是否正確。")
+            
+    except Exception as e:
+        st.error(f"系統啟動中或發生錯誤: {e}")
 
-            if not df.empty:
-                df = get_indicators(df)
-                l = df.iloc[-1]
-                
-                # 顯示數據
-                c1, c2, c3 = st.columns(3)
-                c1.metric("當前股價", f"{l['Close']:.2f}")
-                c2.metric("RSI 指標", f"{l['RSI']:.1f}")
-                c3.metric("5日均線", f"{l['MA5']:.2f}")
-                
-                st.write("### 📈 技術趨勢圖")
-                st.line_chart(df[['Close', 'MA5', 'MA20']].tail(days_map[lookback]))
-                
-                st.success(f"✅ {symbol} 分析完成！")
-            else:
-                st.error("找不到該股票資料，請檢查代號是否正確。")
-        except Exception as e:
-            st.error(f"發生錯誤: {e}")
-
-st.info("⚠️ 投資警語：本系統資訊僅供參考，投資需謹慎。")
+st.info("💡 小撇步：如果看到畫面閃爍，代表伺服器正在抓取最新報價。")
